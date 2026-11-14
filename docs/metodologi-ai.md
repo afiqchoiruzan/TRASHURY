@@ -125,12 +125,17 @@ export const KONFIGURASI_PREPROCESSING_AI = {
   deteksi: {
     lebar: 640,
     tinggi: 640,
+    ambangConfidenceDefault: 0.25,
+    ambangIouDefault: 0.45,
   },
 };
 ```
 
-Logika penerjemahan *raw logits* ke persentase keyakinan diimplementasikan pada modul [`@trashury/shared`](../shared/src/kategoriSampah.ts) menggunakan fungsi Softmax:
-$$\text{Softmax}(z_i) = \frac{e^{z_i - \max(z)}}{\sum_j e^{z_j - \max(z)}}$$
+### Post-Processing & Non-Maximum Suppression (NMS)
+Modul [`@trashury/shared`](../shared/src/kategoriSampah.ts) menyediakan fungsi siap pakai untuk kedua model:
+1. **`terjemahkanLogitsKlasifikasi(logits)`:** Mengubah *raw logits* $[1, 12]$ menjadi probabilitas menggunakan fungsi Softmax:
+   $$\text{Softmax}(z_i) = \frac{e^{z_i - \max(z)}}{\sum_j e^{z_j - \max(z)}}$$
+2. **`terjemahkanOutputYolo(outputData)`:** Menerjemahkan tensor keluaran YOLOv8 $[1, 16, 8400]$, menyaring kotak tumpang tindih menggunakan **IoU (*Intersection over Union*) & Non-Maximum Suppression (NMS)**, memilih rekomendasi kategori dominan, serta mendeteksi peringatan kontaminasi (`food waste` & `Glass Shards`).
 
 ---
 

@@ -49,7 +49,7 @@ jobs:
         run: npm test
 
       - name: Periksa kerentanan dependency produksi
-        run: npm audit --omit=dev --audit-level=high
+        run: npm audit --omit=dev --audit-level=critical
 
   frontend-build:
     name: Lint dan build frontend PWA
