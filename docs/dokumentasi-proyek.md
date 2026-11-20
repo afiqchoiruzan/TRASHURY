@@ -294,7 +294,7 @@ dari seluruh 50 pengujian `npm test` dan hanya muncul di `npm run smoke`.
 | GitHub Project & GitHub Action | Selesai | #7 |
 | User flow & wireframe lo-fi | Selesai | #9 |
 | Dataset & model klasifikasi sampah | Selesai | #19, #20 |
-| Evaluasi & ekspor model ONNX (YOLOv8 & EfficientNet) | Selesai | #21, #22 |
+| Evaluasi & ekspor model ONNX (EfficientNet-B2) | Selesai | #21, #22 |
 | Logika emisi CO2e & dokumentasi metodologi AI | Selesai | #23, #24 |
 | Model forecasting volume setoran | Selesai | #25 |
 | ERD dan skema database | Selesai | #13 |

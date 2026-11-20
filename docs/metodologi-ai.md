@@ -1,6 +1,6 @@
 # Dokumentasi Metodologi dan Model Kecerdasan Buatan (AI) TRASHURY
 
-Dokumen ini merinci metodologi, sumber data, arsitektur pemodelan, hasil evaluasi, dan logika perhitungan reduksi emisi $\text{CO}_2\text{e}$ yang dikembangkan pada proyek **TRASHURY** untuk memenuhi luaran bidang **Kecerdasan Buatan** (#21, #22, #23, #24).
+Dokumen ini merinci metodologi, sumber data, arsitektur pemodelan, hasil evaluasi, dan logika perhitungan reduksi emisi $\text{CO}_2\text{e}$ yang dikembangkan pada proyek **TRASHURY** untuk memenuhi luaran bidang **Kecerdasan Buatan** (#21, #22, #23, #24, #25).
 
 ---
 
@@ -9,8 +9,9 @@ Dokumen ini merinci metodologi, sumber data, arsitektur pemodelan, hasil evaluas
 Model kecerdasan buatan di TRASHURY bertindak sebagai **asisten kasir (*copilot*) berbasis *edge computing*** yang berjalan 100% luring (*offline*) di peramban operator menggunakan **ONNX Runtime Web**.
 
 Fungsi utama AI mencakup:
-1. **Klasifikasi & Lokalisasi Sampah (*Computer Vision*):** Mengenali jenis sampah dari foto tumpukan setoran dan mengarahkan pilihan kategori di layar kasir secara otomatis (1-klik konfirmasi).
+1. **Klasifikasi Sampah (*Computer Vision*):** Mengenali jenis sampah dari foto tumpukan setoran dan menyajikan **Top-3 Smart Suggestion** di layar kasir secara otomatis (1-klik konfirmasi).
 2. **Estimasi Reduksi Emisi $\text{CO}_2\text{e}$:** Menghitung dampak lingkungan berupa emisi karbon yang terhindar (*avoided GHG emissions*) dari sampah yang didaur ulang berdasarkan acuan resmi IPCC Guidelines dan KLHK.
+3. **Peramalan Volume Setoran (*Time-Series Forecasting*):** Memproyeksikan berat sampah, kebutuhan dana kas, dan target reduksi $\text{CO}_2\text{e}$ untuk $1-3$ bulan ke depan.
 
 ---
 
@@ -56,104 +57,85 @@ Kategori sampah disesuaikan dengan alur operasional bank sampah kalurahan dan ni
 
 ## 3. Eksperimen & Perbandingan Arsitektur Model
 
-Untuk menemukan *trade-off* terbaik antara akurasi dan efisiensi memori di komputer kasir, dilakukan pembandingan tiga arsitektur *transfer learning* berbasis PyTorch:
+Untuk menemukan *trade-off* terbaik antara akurasi generalisasi dan efisiensi memori di peramban kasir *offline-first*, dilakukan eksperimen *Two-Stage Fine-Tuning* pada resolusi `260×260` (menggunakan `AdamW`, `CosineAnnealingLR`, `Label Smoothing 0.1`, serta evaluasi *Test-Time Augmentation (TTA)*):
 
-| Arsitektur | Pretrained Weights | Ukuran File (.pth) | Valid Acc (Best) | Karakteristik |
-|---|---|:---:|:---:|---|
-| **ResNet-18** | ImageNet-1K V1 | $42.73\text{ MB}$ | $84.75\%$ | Residual connection standar, cukup cepat |
-| **ResNet-34** | ImageNet-1K V1 | $81.35\text{ MB}$ | $86.25\%$ | Model lebih dalam, ukuran terlalu besar |
-| **EfficientNet-B0** | ImageNet-1K V1 | **$15.64\text{ MB}$** | **$91.00\%$** | **Compound scaling efisien, akurasi tertinggi** 🏆 |
+| Arsitektur | Valid Acc | Test Std | **Test TTA** | Ukuran (`.pth`) | Latency (GPU) | Status |
+|---|:---:|:---:|:---:|:---:|:---:|---|
+| **EfficientNet-B0** | $92.75\%$ | $86.47\%$ | $86.96\%$ | $15.64\text{ MB}$ | $1.23\text{ ms}$ | Kandidat |
+| **EfficientNet-B2** | $92.75\%$ | **$88.41\%$** | **$88.89\%$** | $29.88\text{ MB}$ | **$1.00\text{ ms}$** | **Model Edge Terpilih** 🏆 |
+| **EfficientNetV2-S** | $95.00\%$ | $87.44\%$ | $87.92\%$ | $77.90\text{ MB}$ | $1.11\text{ ms}$ | Kandidat |
 
-**Keputusan:** **EfficientNet-B0** dipilih sebagai model klasifikasi utama karena menghasilkan akurasi validasi tertinggi ($91.00\%$) dengan ukuran file paling ramping ($15.64\text{ MB}$), sangat ideal untuk dimuat pada PWA luring.
+### Eksperimen Komparatif *Cloud Backbone* (`SigLIP-SO400M + ResMLP/MLP2`)
+Sebagai pembanding kapabilitas *Vision-Language Foundation Model*, diuji pula pendekatan *Frozen Vision Embedding* (`google/siglip-so400m-patch14-384`, `1152`-dim) + *ResMLP / Multi-Seed MLP2* dengan *Feature-Space Mixup* pada dataset yang diperluas (`3.164` citra: Roboflow + TrashBox `70/15/15`), menghasilkan **Valid Acc `96.56%`** dan **Test Acc `96.03%`** (`Macro F1 = 0.9644`). Namun karena *vision encoder* `SigLIP-SO400M` berukuran $\approx 1.6\text{ GB}$ dan terlalu berat untuk dijalankan langsung di peramban *offline* (`onnxruntime-web`), **`EfficientNet-B2` (`klasifikasi-sampah-v3.onnx`, `29.41 MB`, 1 berkas utuh)** dipilih sebagai model produksi PWA TRASHURY.
 
 ---
 
-## 4. Evaluasi & Metrik Model Terbaik (EfficientNet-B0)
+## 4. Evaluasi & Metrik Model Terbaik (`EfficientNet-B2`)
 
-### 4.1 Laporan Klasifikasi (*Test Set*)
+### 4.1 Laporan Klasifikasi (*Test Set + TTA*)
 
 | Kategori Sampah | Precision | Recall | F1-Score | Jumlah Sampel |
 |---|:---:|:---:|:---:|:---:|
-| **Cardboard Boxes** | 0.88 | 0.95 | 0.91 | 22 |
-| **Glass Bottles** | 0.74 | 0.88 | 0.80 | 16 |
-| **Glass Shards** | 0.92 | 0.92 | 0.92 | 12 |
-| **Jug** | 1.00 | 0.93 | 0.97 | 15 |
-| **Metal Can** | 0.83 | 0.96 | 0.89 | 26 |
-| **Paper** | 1.00 | 0.75 | 0.86 | 12 |
-| **Paper Bag** | 0.89 | 0.80 | 0.84 | 20 |
-| **Paper Cup** | 0.92 | 0.92 | 0.92 | 12 |
-| **Plastic Bottle** | 0.95 | 0.87 | 0.91 | 23 |
-| **Plastic Cup** | 0.91 | 0.95 | 0.93 | 21 |
-| **Plastic bag** | 0.90 | 0.95 | 0.92 | 20 |
-| **food waste** | 1.00 | 0.83 | 0.91 | 18 |
-| **Rata-rata Makro / Akurasi** | **0.91** | **0.90** | **0.90** | **Total: 217** |
+| **Cardboard Boxes** | 0.91 | 0.91 | 0.91 | 22 |
+| **Glass Bottles** | 0.76 | 0.81 | 0.79 | 16 |
+| **Glass Shards** | 1.00 | 1.00 | 1.00 | 12 |
+| **Jug** | 0.93 | 0.93 | 0.93 | 15 |
+| **Metal Can** | 0.93 | 0.96 | 0.94 | 26 |
+| **Paper** | 0.75 | 0.75 | 0.75 | 12 |
+| **Paper Bag** | 0.91 | 0.95 | 0.93 | 22 |
+| **Paper Cup** | 0.79 | 0.88 | 0.83 | 17 |
+| **Plastic Bottle** | 0.87 | 0.83 | 0.85 | 24 |
+| **Plastic Cup** | 0.95 | 0.82 | 0.88 | 22 |
+| **Plastic bag** | 0.89 | 0.89 | 0.89 | 9 |
+| **food waste** | 1.00 | 0.90 | 0.95 | 10 |
+| **Rata-rata Makro / Akurasi** | **0.89** | **0.89** | **0.89** | **Total: 207** |
 
-### 4.2 Analisis Kesalahan (*Error Analysis*)
+### 4.2 Analisis Kesalahan & Paradigma *Top-3 Smart Suggestion*
 * **Botol Kaca vs Botol Plastik Transparan:** Sebagian botol kaca bening terklasifikasi sebagai botol plastik karena kemiripan transparansi pada pencahayaan tinggi.
-* **Human-in-the-Loop:** Temuan ini memperkuat keputusan desain TRASHURY untuk tetap menyertakan tombol koreksi manual bagi operator kasir (`sumber_klasifikasi: 'manual'`).
+* **Konsep *AI Visual Checkout Scale* (Mettler Toledo & Winnow Vision):** Mengadopsi pola timbangan pintar industri, keluaran AI TRASHURY menyajikan **Top-3 Smart Suggestion (`kandidat_teratas`)** beserta **peringatan kontaminasi otomatis (`peringatan_kontaminasi`)**. Kategori peringkat ke-1 otomatis terpilih, sementara peringkat ke-2 dan ke-3 ditampilkan sebagai tombol alternatif 1-klik bagi operator kasir (`sumber_klasifikasi: 'ai'` bila menerima saran, `'manual'` bila dikoreksi).
 
 ---
 
-## 5. Pengembangan Lanjutan: Object Detection (YOLOv8-Nano)
+## 5. Ekspor Model ke ONNX & Integrasi Frontend PWA
 
-Sebagai pelengkap visual dan deteksi multi-objek pada meja penimbangan, dikembangkan model **YOLOv8-Nano** menggunakan pendekatan *Weakly-Supervised Auto-Annotation* (memanfaatkan model fondasi YOLO-World untuk membuat koordinat *bounding box* otomatis):
-
-* **Model:** YOLOv8-Nano (`yolov8n.pt`)
-* **Ukuran Berkas ONNX:** **$11.77\text{ MB}$**
-* **Tensor Masukan:** `images` $[1, 3, 640, 640]$
-* **Tensor Keluaran:** `output0` $[1, 16, 8400]$ (4 koordinat $xywh$ + 12 probabilitas kelas)
-* **Kecepatan Inferensi:** $< 60\text{ ms}$ pada CPU laptop standar.
-
----
-
-## 6. Ekspor Model ke ONNX & Integrasi Frontend PWA
-
-Model diekspor ke format terbuka **ONNX (*Open Neural Network Exchange*)** dengan parameter:
-* `opset_version = 14`
+Model diekspor ke format terbuka **ONNX (*Open Neural Network Exchange*)** sebagai **1 berkas tunggal utuh** pada [`models/klasifikasi-sampah-v3.onnx`](../models/klasifikasi-sampah-v3.onnx) (`29.41 MB`) dengan parameter:
+* `opset_version = 14`, `export_params = True`, `dynamo = False`
 * `dynamic_axes = {"input": {0: "batch_size"}, "output": {0: "batch_size"}}`
-* Seluruh bobot tersimpan langsung dalam berkas terkompresi.
 
 ### Parameter Preprocessing Kanvas:
 ```typescript
 export const KONFIGURASI_PREPROCESSING_AI = {
   klasifikasi: {
-    lebar: 224,
-    tinggi: 224,
+    lebar: 260,
+    tinggi: 260,
     mean: [0.485, 0.456, 0.406],
     std: [0.229, 0.224, 0.225],
-  },
-  deteksi: {
-    lebar: 640,
-    tinggi: 640,
-    ambangConfidenceDefault: 0.25,
-    ambangIouDefault: 0.45,
   },
 };
 ```
 
-### Post-Processing & Non-Maximum Suppression (NMS)
-Modul [`@trashury/shared`](../shared/src/kategoriSampah.ts) menyediakan fungsi siap pakai untuk kedua model:
-1. **`terjemahkanLogitsKlasifikasi(logits)`:** Mengubah *raw logits* $[1, 12]$ menjadi probabilitas menggunakan fungsi Softmax:
-   $$\text{Softmax}(z_i) = \frac{e^{z_i - \max(z)}}{\sum_j e^{z_j - \max(z)}}$$
-2. **`terjemahkanOutputYolo(outputData)`:** Menerjemahkan tensor keluaran YOLOv8 $[1, 16, 8400]$, menyaring kotak tumpang tindih menggunakan **IoU (*Intersection over Union*) & Non-Maximum Suppression (NMS)**, memilih rekomendasi kategori dominan, serta mendeteksi peringatan kontaminasi (`food waste` & `Glass Shards`).
+### Post-Processing Softmax & Top-3 Suggestion
+Modul [`@trashury/shared`](../shared/src/kategoriSampah.ts) menyediakan fungsi **`terjemahkanLogitsKlasifikasi(logits)`** yang mengubah *raw logits* $[1, 12]$ menjadi distribusi probabilitas menggunakan fungsi Softmax:
+$$\text{Softmax}(z_i) = \frac{e^{z_i - \max(z)}}{\sum_j e^{z_j - \max(z)}}$$
+serta mengembalikan kategori utama, 3 kandidat teratas (`kandidat_teratas`), dan peringatan kontaminasi (`food waste` & `Glass Shards`).
 
 ---
 
-## 7. Metodologi Perhitungan Reduksi Emisi $\text{CO}_2\text{e}$
+## 6. Metodologi Perhitungan Reduksi Emisi $\text{CO}_2\text{e}$
 
-### 7.1 Landasan Ilmiah
+### 6.1 Landasan Ilmiah
 Perhitungan pengurangan emisi gas rumah kaca (GRK) mengacu pada metodologi *Life Cycle Assessment* (LCA) dan faktor emisi daur ulang yang diadopsi dari **IPCC Guidelines for National Greenhouse Gas Inventories** serta data publikasi Kementerian Lingkungan Hidup dan Kehutanan (KLHK).
 
 Emisi yang terhindar dihitung dari selisih energi proses produksi material baru (*virgin material*) dibandingkan material daur ulang (*recycled material*), ditambah emisi gas metana yang dicegah dari penimbunan di TPA (*landfill methane avoidance*).
 
-### 7.2 Rumus Perhitungan
+### 6.2 Rumus Perhitungan
 Untuk setiap baris setoran sampah ke-$i$:
 $$\text{Subtotal CO}_2\text{e}_i = \text{berat\_kg}_i \times \text{faktor\_co2e\_per\_kg}_i$$
 $$\text{Total CO}_2\text{e} = \sum_{i=1}^{n} \text{Subtotal CO}_2\text{e}_i$$
 
 Hasil dibulatkan hingga 4 desimal menggunakan fungsi [`bulatkanCo2e`](../shared/src/perhitungan.ts).
 
-### 7.3 Tabel Faktor Emisi Acuan
+### 6.3 Tabel Faktor Emisi Acuan
 
 | Kategori Sampah | Faktor Emisi ($\text{kg CO}_2\text{e} / \text{kg}$) | Harga Acuan / kg | Dasar Pertimbangan Lingkungan |
 |---|:---:|:---:|---|
@@ -172,11 +154,11 @@ Hasil dibulatkan hingga 4 desimal menggunakan fungsi [`bulatkanCo2e`](../shared/
 
 ---
 
-## 8. Metodologi Peramalan Volume Setoran (*Time-Series Forecasting*, #25)
+## 7. Metodologi Peramalan Volume Setoran (*Time-Series Forecasting*, #25)
 
 Untuk membantu pengurus bank sampah dalam perencanaan kapasitas gudang depo, pemesanan truk pengangkut pengepul, dan estimasi kesiapan dana kas operasional, TRASHURY dilengkapi mesin peramalan deret waktu (*time-series forecasting engine*).
 
-### 8.1 Model & Algoritma
+### 7.1 Model & Algoritma
 Mesin peramalan pada [`shared/src/forecasting.ts`](../shared/src/forecasting.ts) mengombinasikan dua metode statistik:
 1. **Holt's Linear Exponential Smoothing ($N \ge 3\text{ bulan}$):**
    * Menyesuaikan nilai dasar (*Level* $L_t$) dan kemiringan tren (*Trend* $T_t$) dengan parameter pemulusan $\alpha = 0.5$ dan $\beta = 0.3$:
@@ -186,7 +168,7 @@ Mesin peramalan pada [`shared/src/forecasting.ts`](../shared/src/forecasting.ts)
 2. **Regresi Linear & Weighted Moving Average ($N < 3\text{ bulan}$):**
    * Sebagai *fallback* saat bank sampah baru beroperasi dan data historis masih terbatas (*cold start*).
 
-### 8.2 Estimasi Multi-Dimensi (Beban Fisik, Finansial, dan Lingkungan)
+### 7.2 Estimasi Multi-Dimensi (Beban Fisik, Finansial, dan Lingkungan)
 Setiap angka proyeksi berat ($\text{kg}$) untuk $h$ bulan mendatang secara otomatis dikonversikan menjadi:
 * **Estimasi Kas Uang:** $\hat{Y} \times \text{harga\_per\_kg}$ (kebutuhan kas penarikan).
 * **Estimasi Reduksi Karbon:** $\hat{Y} \times \text{faktor\_co2e\_per\_kg}$ (target emisi hijau DLH).
@@ -194,10 +176,10 @@ Setiap angka proyeksi berat ($\text{kg}$) untuk $h$ bulan mendatang secara otoma
 
 ---
 
-## 9. Verifikasi & Pengujian Kode
+## 8. Verifikasi & Pengujian Kode
 Seluruh logika kalkulasi, pemetaan model AI, dan mesin forecasting telah diverifikasi melalui pengujian otomatis Vitest:
 * [`shared/src/perhitungan.test.ts`](../shared/src/perhitungan.test.ts)
 * [`shared/src/kategoriSampah.test.ts`](../shared/src/kategoriSampah.test.ts)
 * [`shared/src/forecasting.test.ts`](../shared/src/forecasting.test.ts)
 
-Hasil pengujian: **100% lulus (65/65 tests passing)** pada CI.
+Hasil pengujian: **100% lulus** pada CI.
