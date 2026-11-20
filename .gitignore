@@ -6,3 +6,4 @@ dist/
 *.ipynb
 *.pth
 dataset*/
+trashury-ai-model/
