@@ -6,7 +6,9 @@ Dokumen ini merinci metodologi, sumber data, arsitektur pemodelan, hasil evaluas
 
 ## 1. Ringkasan & Ruang Lingkup AI
 
-Model kecerdasan buatan di TRASHURY bertindak sebagai **asisten kasir (*copilot*) berbasis *edge computing*** yang berjalan 100% luring (*offline*) di peramban operator menggunakan **ONNX Runtime Web**.
+Model kecerdasan buatan di TRASHURY menggunakan arsitektur **Hybrid Cloud-Edge AI** sebagai **asisten kasir (*copilot*)**:
+* **Mode Online (Cloud AI — High Accuracy):** Menembak layanan inferensi **`SigLIP-SO400M + Multi-Seed MLP2 Ensemble`** (`96.03%` Test Acc) yang di-host gratis pada **Hugging Face Spaces** ([`afiqmc777/trashury-siglip-api`](https://huggingface.co/spaces/afiqmc777/trashury-siglip-api)) sehingga tidak membebani RAM VM Azure DTETI (`4 GiB`).
+* **Mode Offline / Fallback (Edge AI — Offline-First):** Apabila perangkat sedang *offline* atau Cloud AI *timeout* (> 5 detik), fungsi `klasifikasiHybridAi()` pada `@trashury/shared` otomatis beralih (*fallback*) ke model lokal **`EfficientNet-B2` ONNX (`29.41 MB`)** yang berjalan 100% luring di peramban operator menggunakan **ONNX Runtime Web**.
 
 Fungsi utama AI mencakup:
 1. **Klasifikasi Sampah (*Computer Vision*):** Mengenali jenis sampah dari foto tumpukan setoran dan menyajikan **Top-3 Smart Suggestion** di layar kasir secara otomatis (1-klik konfirmasi).
@@ -65,8 +67,10 @@ Untuk menemukan *trade-off* terbaik antara akurasi generalisasi dan efisiensi me
 | **EfficientNet-B2** | $92.75\%$ | **$88.41\%$** | **$88.89\%$** | $29.88\text{ MB}$ | **$1.00\text{ ms}$** | **Model Edge Terpilih** 🏆 |
 | **EfficientNetV2-S** | $95.00\%$ | $87.44\%$ | $87.92\%$ | $77.90\text{ MB}$ | $1.11\text{ ms}$ | Kandidat |
 
-### Eksperimen Komparatif *Cloud Backbone* (`SigLIP-SO400M + ResMLP/MLP2`)
-Sebagai pembanding kapabilitas *Vision-Language Foundation Model*, diuji pula pendekatan *Frozen Vision Embedding* (`google/siglip-so400m-patch14-384`, `1152`-dim) + *ResMLP / Multi-Seed MLP2* dengan *Feature-Space Mixup* pada dataset yang diperluas (`3.164` citra: Roboflow + TrashBox `70/15/15`), menghasilkan **Valid Acc `96.56%`** dan **Test Acc `96.03%`** (`Macro F1 = 0.9644`). Namun karena *vision encoder* `SigLIP-SO400M` berukuran $\approx 1.6\text{ GB}$ dan terlalu berat untuk dijalankan langsung di peramban *offline* (`onnxruntime-web`), **`EfficientNet-B2` (`klasifikasi-sampah-v3.onnx`, `29.41 MB`, 1 berkas utuh)** dipilih sebagai model produksi PWA TRASHURY.
+### Arsitektur *Cloud Backbone* (`SigLIP-SO400M + ResMLP/MLP2`) & Deployment Hybrid
+Untuk memaksimalkan akurasi saat koneksi internet tersedia, TRASHURY menerapkan pendekatan *Frozen Vision Embedding* (`google/siglip-so400m-patch14-384`, `1152`-dim) + *ResMLP / Multi-Seed MLP2* dengan *Feature-Space Mixup* pada dataset yang diperluas (`3.164` citra: Roboflow + TrashBox `70/15/15`), menghasilkan **Valid Acc `96.56%`** dan **Test Acc `96.03%`** (`Macro F1 = 0.9644`).
+
+Model *Cloud AI* ini di-deploy secara terpisah dan gratis pada **Hugging Face Spaces (Gradio + ZeroGPU)** di [`https://afiqmc777-trashury-siglip-api.hf.space`](https://afiqmc777-trashury-siglip-api.hf.space) (repositori model: [`Trashury-AI`](https://github.com/afiqchoiruzan/Trashury-AI)). Sementara itu, **`EfficientNet-B2` (`klasifikasi-sampah-v3.onnx`, `29.41 MB`, 1 berkas utuh)** dibundel langsung di PWA sebagai mesin *Edge AI* luring. Perpindahan otomatis keduanya diatur oleh `klasifikasiHybridAi()` pada [`shared/src/hybridAi.ts`](../shared/src/hybridAi.ts).
 
 ---
 
