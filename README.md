@@ -43,6 +43,7 @@ Tahap perancangan, kode aplikasi belum dimulai. Rincian per bidang ada di
 | [Skema database server](docs/design/schema-azure.sql) | DDL PostgreSQL untuk basis data terpusat di Azure |
 | [Kontrak API](docs/design/kontrak-api.md) | Spesifikasi endpoint, aturan validasi, dan bentuk galat |
 | [Metodologi AI](docs/metodologi-ai.md) | Sumber dataset, arsitektur Hybrid Cloud-Edge (SigLIP-SO400M + EfficientNet-B2), evaluasi model, dan faktor CO2e |
+| [Panduan integrasi AI frontend](docs/panduan-integrasi-ai-frontend.md) | Kode siap pakai integrasi Hybrid Cloud-Edge AI dan forecasting di Frontend PWA |
 
 ## Menjalankan API
 
